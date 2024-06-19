@@ -17,7 +17,6 @@ import './App.css'
 import * as buffer from "buffer";
 window.Buffer = buffer.Buffer;
 
-
 // create types
 type DisplayEncoding = "utf8" | "hex";
 
@@ -97,22 +96,28 @@ export default function App() {
    */
   const createSender = async () => {
     // create a new Keypair
+    const newKeypair = Keypair.generate();
+    setSenderKeypair(newKeypair);
 
-
-    console.log('Sender account: ', senderKeypair!.publicKey.toString());
+    console.log('Sender account: ', newKeypair.publicKey.toString());
     console.log('Airdropping 2 SOL to Sender Wallet');
 
-    // save this new KeyPair into this state variable
-    setSenderKeypair(/*KeyPair here*/);
-
     // request airdrop into this new account
-    
+    const airdropSignature = await connection.requestAirdrop(
+      newKeypair.publicKey,
+      2 * LAMPORTS_PER_SOL
+    );
 
     const latestBlockHash = await connection.getLatestBlockhash();
 
     // now confirm the transaction
+    await connection.confirmTransaction({
+      signature: airdropSignature,
+      blockhash: latestBlockHash.blockhash,
+      lastValidBlockHeight: latestBlockHash.lastValidBlockHeight
+    });
 
-    console.log('Wallet Balance: ' + (await connection.getBalance(senderKeypair!.publicKey)) / LAMPORTS_PER_SOL);
+    console.log('Wallet Balance: ' + (await connection.getBalance(newKeypair.publicKey)) / LAMPORTS_PER_SOL);
   }
 
   /**
@@ -127,9 +132,11 @@ export default function App() {
     if (solana) {
       try {
         // connect to phantom wallet and return response which includes the wallet public key
+        const response = await solana.connect();
+        console.log('Connected with public key: ', response.publicKey.toString());
 
         // save the public key of the phantom wallet to the state variable
-        setReceiverPublicKey(/*PUBLIC KEY*/);
+        setReceiverPublicKey(response.publicKey);
       } catch (err) {
         console.log(err);
       }
@@ -160,15 +167,31 @@ export default function App() {
    * @description transfer SOL from sender wallet to connected wallet.
    * This function is called when the Transfer SOL to Phantom Wallet button is clicked
    */
-  const transferSol = async () => {    
-    
+  const transferSol = async () => {
+    if (!senderKeypair || !receiverPublicKey) {
+      console.log("Sender or receiver public key is not set.");
+      return;
+    }
+
     // create a new transaction for the transfer
+    const transaction = new Transaction().add(
+      SystemProgram.transfer({
+        fromPubkey: senderKeypair.publicKey,
+        toPubkey: receiverPublicKey,
+        lamports: 1 * LAMPORTS_PER_SOL,
+      })
+    );
 
     // send and confirm the transaction
+    const signature = await sendAndConfirmTransaction(
+      connection,
+      transaction,
+      [senderKeypair]
+    );
 
-    console.log("transaction sent and confirmed");
-    console.log("Sender Balance: " + await connection.getBalance(senderKeypair!.publicKey) / LAMPORTS_PER_SOL);
-    console.log("Receiver Balance: " + await connection.getBalance(receiverPublicKey!) / LAMPORTS_PER_SOL);
+    console.log("Transaction sent and confirmed: ", signature);
+    console.log("Sender Balance: " + await connection.getBalance(senderKeypair.publicKey) / LAMPORTS_PER_SOL);
+    console.log("Receiver Balance: " + await connection.getBalance(receiverPublicKey) / LAMPORTS_PER_SOL);
   };
 
   // HTML code for the app
